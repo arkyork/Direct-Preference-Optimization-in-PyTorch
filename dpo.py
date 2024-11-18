@@ -102,14 +102,15 @@ class DPO:
         for epoch in range(num_epochs):
             for batch in dataset:
 
-
+                optimizer.zero_grad()
+                
                 y_w = torch.tensor(batch['chosen_tokenizer']['input_ids']).to(device)
                 y_l = torch.tensor(batch['rejected_tokenizer']['input_ids']).to(device)
                 # 順伝播と損失計算
-                loss = self.compute_loss( y_w, y_l)
+                loss = self.compute_loss(y_w, y_l)
 
                 # 逆伝播と最適化
-                optimizer.zero_grad()
+
                 loss.backward()
                 optimizer.step()
 
