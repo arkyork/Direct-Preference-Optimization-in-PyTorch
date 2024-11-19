@@ -37,17 +37,17 @@ class DPO:
         self.tokenizer = AutoTokenizer.from_pretrained(model_id)
         self.tokenizer.add_special_tokens({'pad_token': '[PAD]'})
 
-    def compute_loss(self, y_w, y_l):
+    def compute_loss(self, y_w,y_w_attention, y_l,y_l_attention):
 
 
         # 現在のポリシーの出力
-        outputs_w = self.model(y_w)
-        outputs_l = self.model(y_l)
+        outputs_w = self.model(input_ids=y_w,attention_mask=y_w_attention)
+        outputs_l = self.model(input_ids=y_l,attention_mask=y_l_attention)
         log_pi_theta_w,log_pi_theta_l = log_prob(outputs_w.logits, y_w,outputs_l.logits, y_l)
 
         # 参照モデルの出力
-        ref_outputs_w = self.ref_model(y_w)
-        ref_outputs_l = self.ref_model(y_l)
+        ref_outputs_w = self.ref_model(input_ids=y_w,attention_mask=y_w_attention)
+        ref_outputs_l = self.ref_model(input_ids=y_l,attention_mask=y_l_attention)
         log_pi_ref_w,log_pi_ref_l = log_prob(ref_outputs_w.logits, y_w,ref_outputs_l.logits, y_l)
         # DPOの目的関数
         log_w = self.beta * (log_pi_theta_w - log_pi_ref_w)
@@ -105,9 +105,12 @@ class DPO:
                 optimizer.zero_grad()
                 
                 y_w = torch.tensor(batch['chosen_tokenizer']['input_ids']).to(device)
+                y_w_attention = torch.tensor(batch['chosen_tokenizer']['attention_mask']).to(device)
                 y_l = torch.tensor(batch['rejected_tokenizer']['input_ids']).to(device)
+                y_l_attention = torch.tensor(batch['rejected_tokenizer']['attention_mask']).to(device)
+
                 # 順伝播と損失計算
-                loss = self.compute_loss(y_w, y_l)
+                loss = self.compute_loss(y_w,y_w_attention, y_l,y_l_attention)
 
                 # 逆伝播と最適化
 
