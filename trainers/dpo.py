@@ -1,33 +1,8 @@
 from transformers import AutoTokenizer
-import numpy as np
 import torch
 import torch.nn.functional as F
-# 対数確率を計算する関数
-def log_prob(chosen_logits,chosen_ids,rejected_logits, rejected_ids):
-    """
-        Args:
-        chosen_logits (torch.Tensor): 選ばれたシーケンスの logits (batch_size, seq_len, vocab_size)
-        chosen_ids (torch.Tensor): 選ばれたシーケンスのラベル IDs (batch_size, seq_len)
-        rejected_logits (torch.Tensor): 却下されたシーケンスの logits (batch_size, seq_len, vocab_size)
-        rejected_ids (torch.Tensor): 却下されたシーケンスのラベル IDs (batch_size, seq_len)    
-    """
-    # Chosen の log probabilities を計算
-    chosen_log_probs = F.log_softmax(chosen_logits, dim=-1)  # (batch_size, seq_len, vocab_size)
-    chosen_selected_log_probs = torch.gather(
-        chosen_log_probs, dim=-1, index=chosen_ids.unsqueeze(-1)  # (batch_size, seq_len, 1)
-    ).squeeze(-1)  # (batch_size, seq_len)
-    chosen_avg_log_prob = chosen_selected_log_probs.mean(dim=-1)  # (batch_size,)
 
-    # Rejected の log probabilities を計算
-    rejected_log_probs = F.log_softmax(rejected_logits, dim=-1)  # (batch_size, seq_len, vocab_size)
-    rejected_selected_log_probs = torch.gather(
-        rejected_log_probs, dim=-1, index=rejected_ids.unsqueeze(-1)  # (batch_size, seq_len, 1)
-    ).squeeze(-1)  # (batch_size, seq_len)
-    rejected_avg_log_prob = rejected_selected_log_probs.mean(dim=-1)  # (batch_size,)
-
-    return chosen_avg_log_prob, rejected_avg_log_prob
-    
-
+from tqdm import tqdm
 
 class DPO:
     def __init__(self, model_id, model, ref_model, beta):
@@ -36,7 +11,32 @@ class DPO:
         self.ref_model = ref_model
         self.tokenizer = AutoTokenizer.from_pretrained(model_id)
         self.tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+    # 対数確率を計算する関数
+    def log_prob(self,chosen_logits,chosen_ids,rejected_logits, rejected_ids):
+        ## DPOのlog_Pi.ipynbで動作を確認
 
+        """
+            Args:
+            chosen_logits (torch.Tensor): 選ばれたシーケンスの logits (batch_size, seq_len, vocab_size)
+            chosen_ids (torch.Tensor): 選ばれたシーケンスのラベル IDs (batch_size, seq_len)
+            rejected_logits (torch.Tensor): 却下されたシーケンスの logits (batch_size, seq_len, vocab_size)
+            rejected_ids (torch.Tensor): 却下されたシーケンスのラベル IDs (batch_size, seq_len)    
+        """
+        # Chosen の log probabilities を計算
+        chosen_log_probs = F.log_softmax(chosen_logits, dim=-1)  # (batch_size, seq_len, vocab_size)
+        chosen_selected_log_probs = torch.gather(
+            chosen_log_probs, dim=-1, index=chosen_ids.unsqueeze(-1)  # (batch_size, seq_len, 1)
+        ).squeeze(-1)  # (batch_size, seq_len)
+        chosen_log_prob = chosen_selected_log_probs.sum(dim=-1)  # (batch_size,)
+
+        # Rejected の log probabilities を計算
+        rejected_log_probs = F.log_softmax(rejected_logits, dim=-1)  # (batch_size, seq_len, vocab_size)
+        rejected_selected_log_probs = torch.gather(
+            rejected_log_probs, dim=-1, index=rejected_ids.unsqueeze(-1)  # (batch_size, seq_len, 1)
+        ).squeeze(-1)  # (batch_size, seq_len)
+        rejected_log_prob = rejected_selected_log_probs.sum(dim=-1)  # (batch_size,)
+
+        return chosen_log_prob, rejected_log_prob
     def compute_loss(self, y_w,y_w_attention, y_l,y_l_attention):
 
 
@@ -99,8 +99,8 @@ class DPO:
 
         dataset=dataset.map(self.tokenize_dataset)
         # 訓練ループ
-        for epoch in range(num_epochs):
-            for batch in dataset:
+        for epoch in tqdm(range(num_epochs)):
+            for batch in tqdm(dataset):
 
                 optimizer.zero_grad()
                 
